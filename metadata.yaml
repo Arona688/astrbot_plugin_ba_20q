@@ -1,0 +1,35 @@
+name: astrbot_plugin_ba_20q
+display_name: BA 猜学生
+short_desc: 用是非题猜出你心里的碧蓝档案学生，官方按钮交互
+desc: |-
+  碧蓝档案（Blue Archive）主题的「二十问」猜谜。
+
+  发送 `/ba猜学生` 开始一局：阿罗娜会连续提出只能回答「是 / 不是 / 不确定」的问题，
+  最多 10 次思考内猜出你心里想的碧蓝档案学生。
+
+  特性：
+  - 角色库 152 位（SchaleDB 全角色 + 阿罗娜、普拉娜）
+  - 别名识别：日文名 / 罗马音 / 常用叫法都能对上
+  - 24 个高频社团参考，支持按社团提问
+  - 每局随机开局角度，不会每次都先问学校
+  - 已猜错的名字自动排除，不会重复猜
+  - 原生 QQ 按钮：是 / 不是 / 不确定 / 放弃，官方 bot 群可用
+  - 结束后带「再来一局」「本群统计」按钮
+  - 每群一局、防连点、3 分钟超时自动关局（不计入统计）
+  - 统计只记录玩完的局：猜中率、平均用问、最佳纪录
+  - 模型调用失败自动重试一次
+version: 1.2.0
+author: chen
+repo: "https://github.com/Arona688/astrbot_plugin_ba_20q"
+astrbot_version: ">=4.20.0"
+support_platforms:
+  - qq_official
+  - qq_official_webhook
+  - aiocqhttp
+category: 娱乐
+tags:
+  - 碧蓝档案
+  - BlueArchive
+  - 猜谜
+  - 二十问
+  - 游戏

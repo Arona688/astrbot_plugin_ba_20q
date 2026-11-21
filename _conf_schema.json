@@ -1,0 +1,30 @@
+{
+  "api_key": {
+    "description": "DeepSeek API Key（留空则使用 AstrBot 当前对话模型）",
+    "type": "string",
+    "default": "",
+    "hint": "填入 sk- 开头的 key 后，游戏直连 DeepSeek 官方接口，不再走 AstrBot 默认模型"
+  },
+  "api_base": {
+    "description": "接口地址",
+    "type": "string",
+    "default": "https://api.deepseek.com/v1"
+  },
+  "model": {
+    "description": "模型名",
+    "type": "string",
+    "default": "deepseek-chat",
+    "hint": "可填 deepseek-chat / deepseek-reasoner"
+  },
+  "max_calls": {
+    "description": "每局最多模型调用次数",
+    "type": "int",
+    "default": 10,
+    "hint": "包含首次出题；用完最后一次会强制猜测"
+  },
+  "timeout": {
+    "description": "单次调用超时（秒）",
+    "type": "int",
+    "default": 45
+  }
+}
