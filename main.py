@@ -1490,6 +1490,7 @@ class BA20QPlugin(Star):
             "max_calls": max_q * 2,
             "mode": "base",
             "pool": list(NAMES),
+            "platform": str(event.get_platform_name() or ""),
             "opening": random.choice(OPENINGS),
             "busy": False,
             "ts": time.time(),
@@ -1542,6 +1543,9 @@ class BA20QPlugin(Star):
         if not history:
             lines.append("")
             lines.append("（只猜原版学生，不含泳装/礼服等服装版）")
+        plat = str(sess.get("platform") or "")
+        if not plat.startswith("qq_official"):
+            lines.append("（没有按钮就回复文字：是 / 不是 / 放弃）")
         if history:
             shown = history[-3:]
             lines.append("")
@@ -1617,8 +1621,10 @@ class BA20QPlugin(Star):
             yield event.plain_result(
                 "📖 BA 猜学生\n\n"
                 "用「是 / 不是」回答阿罗娜的问题，"
-                "她最多思考 12 次就会猜出你心里的碧蓝档案学生。\n"
-                "⚠️ 只猜原版学生，不含泳装、礼服、骑行等服装版本。\n\n"
+                "她最多 12 问就会猜出你心里的碧蓝档案学生。\n"
+                "⚠️ 只猜原版学生，不含泳装、礼服等服装版本。\n"
+                "🖱 QQ 官方机器人：点按钮回答\n"
+                "⌨️ NapCat 等平台：直接回复「是 / 不是 / 放弃」\n\n"
                 "指令：\n"
                 "  /ba猜学生       开始一局\n"
                 "  /ba猜学生 放弃   结束当前这局\n"
@@ -1672,6 +1678,42 @@ class BA20QPlugin(Star):
             if i:
                 await asyncio.sleep(1.0)
             yield event.chain_result(batch)
+
+    @filter.regex(r"(?i)^\s*(是|不是|放弃|对|不对)\s*$")
+    async def on_text_answer(self, event: AstrMessageEvent):
+        """没有按钮的平台（如 NapCat）直接用文字回答。"""
+        gid = self._group_key(event)
+        sess = self.sessions.get(gid)
+        if not sess:
+            return
+        uid = str(event.get_sender_id() or "")
+        if sess.get("owner") != uid and not event.is_admin():
+            return
+        if time.time() - float(sess.get("ts", 0) or 0) > IDLE_TIMEOUT:
+            return
+        text = str(event.message_str or "").strip()
+        if sess.get("state") == "guessing":
+            action = {"对": "right", "是": "right",
+                      "不对": "wrong", "不是": "wrong"}.get(text)
+        else:
+            action = {"是": "yes", "不是": "no"}.get(text)
+        if text == "放弃":
+            action = "giveup"
+        if not action:
+            return
+        event.stop_event()
+        sess["busy"] = True
+        sess["ts"] = time.time()
+        try:
+            async for result in self._handle_action(
+                event, sess, gid, sess.get("id"), action
+            ):
+                yield result
+        finally:
+            sess["busy"] = False
+            sess["ts"] = time.time()
+            if self.sessions.get(gid) is sess:
+                self._save_sessions()
 
     # ---------------- 按钮 ----------------
     @filter.button_action()
