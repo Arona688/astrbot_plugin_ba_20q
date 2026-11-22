@@ -8,6 +8,8 @@ from __future__ import annotations
 
 import asyncio
 import json
+
+import aiohttp
 import random
 import re
 import time
@@ -21,6 +23,7 @@ from astrbot.core.message.message_event_result import MessageChain
 
 PLUGIN_NAME = "astrbot_plugin_ba_20q"
 ROSTER_PATH = Path(__file__).parent / "roster.png"
+ROSTER_PATH_SMALL = Path(__file__).parent / "roster_small.jpg"
 MAX_QUESTIONS_DEFAULT = 12
 MAX_CALLS_DEFAULT = 13
 MIN_QUESTIONS = 8
@@ -848,17 +851,49 @@ class BA20QPlugin(Star):
         self.sessions: dict[str, dict] = self._load_json(self.sessions_file)
         self.stats: dict[str, dict] = self._load_json(self.stats_file)
         self._cleaner_task: asyncio.Task | None = None
+        self.qq = None  # qqoffice_expand 服务门面（可选）
+        self._qq_unsubs: list = []
         logger.info(f"[BA20Q] 已加载，角色库 {len(NAMES)} 位")
+
+    def _try_bind_qq(self) -> bool:
+        try:
+            meta = self.context.get_registered_star("astrbot_plugin_qqoffice_expand")
+            if not (meta and meta.activated and meta.star_cls):
+                return False
+            getter = getattr(meta.star_cls, "get_service", None)
+            if not callable(getter):
+                return False
+            service = getter(api_version=1)
+            if service is None:
+                return False
+            self.qq = service
+            logger.info("[BA20Q] 已接入 qqoffice_expand")
+            return True
+        except Exception as exc:
+            logger.info(f"[BA20Q] 未接入 qqoffice_expand: {exc}")
+            return False
+
+    @filter.on_plugin_loaded()
+    async def _on_plugin_loaded(self, metadata):
+        if self.qq is None:
+            self._try_bind_qq()
 
     async def initialize(self):
         if self._cleaner_task is None:
             self._cleaner_task = asyncio.create_task(self._cleaner_loop())
             logger.info("[BA20Q] 过期会话清理任务已启动")
+        self._try_bind_qq()
 
     async def terminate(self):
         if self._cleaner_task is not None:
             self._cleaner_task.cancel()
             self._cleaner_task = None
+        for unsub in self._qq_unsubs:
+            try:
+                unsub()
+            except Exception:
+                pass
+        self._qq_unsubs.clear()
 
     # ---------------- 存储 ----------------
     @staticmethod
@@ -1455,6 +1490,109 @@ class BA20QPlugin(Star):
             + self._mode_buttons()
         )
 
+    async def _get_media_url(self, event) -> str:
+        """把角色图上传到 QQ 素材库，返回 qqbot-media:// 引用。"""
+        import hashlib
+
+        src = ROSTER_PATH_SMALL if ROSTER_PATH_SMALL.is_file() else ROSTER_PATH
+        if not src.is_file():
+            return ""
+        raw = src.read_bytes()
+        md5 = hashlib.md5(raw).hexdigest()
+        sha1 = hashlib.sha1(raw).hexdigest()
+        cache_file = self.data_dir / "roster_media.json"
+        cache = {}
+        if cache_file.is_file():
+            try:
+                cache = json.loads(cache_file.read_text(encoding="utf-8"))
+            except Exception:
+                cache = {}
+        if cache.get("md5") == md5 and cache.get("url"):
+            return str(cache["url"])
+        if self.qq is None and not self._try_bind_qq():
+            return ""
+        view = event if hasattr(event, "call") else self.qq.for_event(event)
+        ctype = "image/jpeg" if src.suffix.lower() in (".jpg", ".jpeg") else "image/png"
+        prep = await view.call(
+            "POST",
+            "/v2/media-images/prepare",
+            json={
+                "file_name": src.name,
+                "file_size": len(raw),
+                "content_type": ctype,
+                "md5": md5,
+                "sha1": sha1,
+            },
+        )
+        upload_id = prep.get("upload_id") or ""
+        presigned = prep.get("presigned_url") or ""
+        if not (upload_id and presigned):
+            logger.warning(f"[BA20Q] prepare 返回异常：{prep}")
+            return ""
+        async with aiohttp.ClientSession(trust_env=True) as sess:
+            async with sess.put(
+                presigned, data=raw, headers={"Content-Type": ctype},
+                timeout=aiohttp.ClientTimeout(total=120),
+            ) as r:
+                if r.status not in (200, 201, 204):
+                    logger.warning(f"[BA20Q] 图片直传失败：{r.status}")
+                    return ""
+                etag = (r.headers.get("ETag") or "").strip('"')
+        done = await view.call(
+            "POST",
+            "/v2/media-images/complete",
+            json={"upload_id": upload_id, "md5": etag or md5},
+        )
+        url = done.get("url") or ""
+        if not url:
+            logger.warning(f"[BA20Q] complete 返回异常：{done}")
+            return ""
+        try:
+            cache_file.write_text(
+                json.dumps({"md5": md5, "url": url}, ensure_ascii=False),
+                encoding="utf-8",
+            )
+        except Exception as exc:
+            logger.warning(f"[BA20Q] 缓存素材引用失败：{exc}")
+        logger.info(f"[BA20Q] 角色图已上传素材库：{url[:40]}…")
+        return str(url)
+
+    async def _send_first_question(self, event: AstrMessageEvent, sess: dict) -> bool:
+        """第一问：角色图 + 说明 + 指令按钮，一条 markdown 发出。"""
+        plat = str(event.get_platform_name() or "")
+        if not plat.startswith("qq_official"):
+            return False
+        if self.qq is None and not self._try_bind_qq():
+            return False
+        try:
+            view = self.qq.for_event(event)
+            media = await self._get_media_url(view)
+            if not media:
+                return False
+            max_q = int(sess.get("max_q", MAX_QUESTIONS_DEFAULT) or MAX_QUESTIONS_DEFAULT)
+            head = "**第 1/%d 问**\n\n❓ %s" % (max_q, sess.get("question", ""))
+            head += "\n\n（只猜原版学生，不含泳装/礼服等服装版）"
+            content = "\n\n".join(
+                [
+                    self.qq.md_image(media, width=700, height=927),
+                    "👆 **只从上面图里挑一位学生**",
+                    head,
+                ]
+            )
+            kb = self.qq.kb()
+            kb.row(
+                self.qq.btn("✅ 是", "是", type=2, enter=True),
+                self.qq.btn("❌ 不是", "不是", type=2, enter=True),
+                self.qq.btn("🏳 放弃", "放弃", type=2, enter=True),
+            )
+            await view.send_rich(markdown=self.qq.md(content), keyboard=kb.build())
+            logger.info("[BA20Q] 第一问已用 markdown 图文+按钮发送")
+            return True
+        except Exception as exc:
+            logger.warning(f"[BA20Q] 第一问 markdown 失败，回退普通消息：{exc}")
+            return False
+
+    @staticmethod
     async def _begin_game(
         self, event: AstrMessageEvent, mode: str = "base", with_image: bool = True
     ) -> tuple[str, list | None]:
@@ -1511,6 +1649,8 @@ class BA20QPlugin(Star):
         sess["state"] = "asking"
         self.sessions[gid] = sess
         self._save_sessions()
+        if with_image and await self._send_first_question(event, sess):
+            return "", []
         card = [Plain(self._question_text(sess))] + self._buttons(sess_id, guessing=False)
         # 图片必须单独一条发送；带键盘（按钮）的消息不能同时带图片
         sent = False
@@ -1719,11 +1859,43 @@ class BA20QPlugin(Star):
     @filter.button_action()
     async def on_button(self, event: AstrMessageEvent):
         data = ""
+        interaction_id = ""
+        source_msg_id = ""
         for comp in event.get_messages():
             if type(comp).__name__ == "ButtonInteraction":
                 data = str(getattr(comp, "data", "") or "")
+                interaction_id = str(getattr(comp, "interaction_id", "") or "")
+                source_msg_id = str(getattr(comp, "source_message_id", "") or "")
                 break
         if not data.startswith("ba20q:"):
+            return
+        # 官方平台 + 扩展可用：用 event_id 回复，绕开 msg_id 越权
+        if (
+            self.qq is not None
+            and str(event.get_platform_name() or "").startswith("qq_official")
+            and data.count(":") >= 2
+            and interaction_id
+        ):
+            event.stop_event()
+            parts = data.split(":")
+            sess_id, action = parts[1], parts[2]
+            gid = self._group_key(event)
+            sess = self.sessions.get(gid)
+            if not sess or sess.get("id") != sess_id:
+                yield event.plain_result("这局已经结束啦，发 /ba猜学生 再开一局吧～")
+                return
+            try:
+                view = self.qq.instance(str(event.get_platform_id() or ""))
+                send_kw = {
+                    "scene": "group",
+                    "target_openid": str(event.get_group_id() or ""),
+                    "event_id": interaction_id,
+                    "event_id_source": "INTERACTION_CREATE",
+                }
+                logger.info(f"[BA20Q] 原生交互改用 event_id 回复：{data}")
+                await self._interact(view, sess, gid, sess_id, action, **send_kw)
+            except Exception as exc:
+                logger.warning(f"[BA20Q] 原生交互回复失败：{exc}")
             return
         event.stop_event()
         parts = data.split(":")
