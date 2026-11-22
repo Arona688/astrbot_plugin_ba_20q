@@ -1858,43 +1858,11 @@ class BA20QPlugin(Star):
     @filter.button_action()
     async def on_button(self, event: AstrMessageEvent):
         data = ""
-        interaction_id = ""
-        source_msg_id = ""
         for comp in event.get_messages():
             if type(comp).__name__ == "ButtonInteraction":
                 data = str(getattr(comp, "data", "") or "")
-                interaction_id = str(getattr(comp, "interaction_id", "") or "")
-                source_msg_id = str(getattr(comp, "source_message_id", "") or "")
                 break
         if not data.startswith("ba20q:"):
-            return
-        # 官方平台 + 扩展可用：用 event_id 回复，绕开 msg_id 越权
-        if (
-            self.qq is not None
-            and str(event.get_platform_name() or "").startswith("qq_official")
-            and data.count(":") >= 2
-            and interaction_id
-        ):
-            event.stop_event()
-            parts = data.split(":")
-            sess_id, action = parts[1], parts[2]
-            gid = self._group_key(event)
-            sess = self.sessions.get(gid)
-            if not sess or sess.get("id") != sess_id:
-                yield event.plain_result("这局已经结束啦，发 /ba猜学生 再开一局吧～")
-                return
-            try:
-                view = self.qq.instance(str(event.get_platform_id() or ""))
-                send_kw = {
-                    "scene": "group",
-                    "target_openid": str(event.get_group_id() or ""),
-                    "event_id": interaction_id,
-                    "event_id_source": "INTERACTION_CREATE",
-                }
-                logger.info(f"[BA20Q] 原生交互改用 event_id 回复：{data}")
-                await self._interact(view, sess, gid, sess_id, action, **send_kw)
-            except Exception as exc:
-                logger.warning(f"[BA20Q] 原生交互回复失败：{exc}")
             return
         event.stop_event()
         parts = data.split(":")
