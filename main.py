@@ -1592,7 +1592,6 @@ class BA20QPlugin(Star):
             logger.warning(f"[BA20Q] 第一问 markdown 失败，回退普通消息：{exc}")
             return False
 
-    @staticmethod
     async def _begin_game(
         self, event: AstrMessageEvent, mode: str = "base", with_image: bool = True
     ) -> tuple[str, list | None]:
