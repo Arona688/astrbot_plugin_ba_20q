@@ -5,7 +5,7 @@ desc: |-
   碧蓝档案「二十问」猜谜：发 `/ba猜学生`，阿罗娜连续提问，最多 12 问猜出你心里的学生。
 
   目前仅在 QQ 官方机器人测试过。
-version: 5.0.6
+version: 5.0.7
 author: chen
 repo: "https://github.com/Arona688/astrbot_plugin_ba_20q"
 astrbot_version: ">=4.20.0"
