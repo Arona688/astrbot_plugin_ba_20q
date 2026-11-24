@@ -8,7 +8,7 @@ desc: |-
   （markdown 图文 + 按钮），之后阿罗娜连续提问，最多 12 问猜出你心里的学生。
 
   QQ 官方机器人点按钮回答；NapCat 等平台直接回复「是 / 不是 / 放弃」。
-version: 5.0.2
+version: 5.0.5
 author: chen
 repo: "https://github.com/Arona688/astrbot_plugin_ba_20q"
 astrbot_version: ">=4.20.0"
