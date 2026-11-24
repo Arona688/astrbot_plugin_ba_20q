@@ -815,7 +815,7 @@ def _best_split(
         if len(values) < 2:
             continue
         values.sort(key=lambda v: counts[v], reverse=True)
-        max_k = min(4, len(values) - 1)
+        max_k = min(2, len(values) - 1)
         for k in range(1, max_k + 1):
             for subset in combinations(values, k):
                 if (field, frozenset(subset)) in asked_pairs:
@@ -1349,6 +1349,21 @@ class BA20QPlugin(Star):
             if _cands:
                 logger.info(f"[BA20Q] 没有可问的问题，直接作答：{_cands[0]}")
                 return "guess", _cands[0]
+        if rejected_guess:
+            cand = self._fallback_candidate(history, excluded, pool)
+            if not cand and _cands:
+                cand = _cands[0]
+            if not cand:
+                cand = next(
+                    (n for n in pool if n not in (excluded or [])), ""
+                )
+            if cand:
+                logger.info(f"[BA20Q] 猜测与回答冲突，改用候选兜底：{cand}")
+                return "guess", cand
+            return (
+                "error",
+                "你的回答前后矛盾了，这局没法继续。发 /ba猜学生 重开一局吧～",
+            )
         if last_kind:
             if last_kind == "ask" and any(
                 k in (last_value or "") for k in ("身高", "cm", "CM")
