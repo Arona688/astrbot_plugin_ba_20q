@@ -1,21 +1,16 @@
 name: astrbot_plugin_ba_20q
 display_name: BA 猜学生
-short_desc: 用是非题猜出你心里的碧蓝档案学生
+short_desc: 用是非题猜出心里的碧蓝档案学生
 desc: |-
-  碧蓝档案主题的「二十问」猜谜。
+  碧蓝档案「二十问」猜谜：发 `/ba猜学生`，阿罗娜连续提问，最多 12 问猜出你心里的学生。
 
-  发送 `/ba猜学生` 开始：第一问会发一张 146 位原版角色的头像一览图
-  （markdown 图文 + 按钮），之后阿罗娜连续提问，最多 12 问猜出你心里的学生。
-
-  QQ 官方机器人点按钮回答；NapCat 等平台直接回复「是 / 不是 / 放弃」。
-version: 5.0.5
+  目前仅在 QQ 官方机器人测试过。
+version: 5.0.6
 author: chen
 repo: "https://github.com/Arona688/astrbot_plugin_ba_20q"
 astrbot_version: ">=4.20.0"
 support_platforms:
   - qq_official
-  - qq_official_webhook
-  - aiocqhttp
 tags:
   - 碧蓝档案
   - BlueArchive
